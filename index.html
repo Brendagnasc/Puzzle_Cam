@@ -41,7 +41,18 @@
     const ctx = canvas.getContext("2d");
     const status = document.getElementById("status");
 
+    // limiar da pinça: distância polegar-indicador dividida pelo tamanho da mão
+    const LIMIAR_PINCA = 0.35;
+
     let resultadoMaos = null;
+
+    // estado do cursor controlado pela mão
+    const cursor = {
+      x: 0,
+      y: 0,
+      pincando: false,
+      visivel: false
+    };
 
     const hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
@@ -73,6 +84,56 @@
       status.textContent = "Erro ao acessar a webcam: " + erro.message;
     });
 
+    function distancia(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function atualizarCursor(marcos) {
+      const polegar = marcos[4];   // ponta do polegar
+      const indicador = marcos[8]; // ponta do indicador
+
+      // tamanho de referência da mão: pulso (0) até a base do dedo médio (9).
+      // normalizar por isso deixa o limiar independente da distância da câmera
+      const tamanhoMao = distancia(marcos[0], marcos[9]);
+      const aberturaPinca = distancia(polegar, indicador) / tamanhoMao;
+
+      // cursor fica no ponto médio entre os dois dedos, já espelhado
+      cursor.x = (1 - (polegar.x + indicador.x) / 2) * canvas.width;
+      cursor.y = ((polegar.y + indicador.y) / 2) * canvas.height;
+      cursor.pincando = aberturaPinca < LIMIAR_PINCA;
+      cursor.visivel = true;
+    }
+
+    function desenharMao(marcos) {
+      const pontos = marcos.map(p => ({
+        x: (1 - p.x) * canvas.width,
+        y: p.y * canvas.height
+      }));
+
+      ctx.strokeStyle = "rgba(0, 255, 136, 0.5)";
+      ctx.lineWidth = 2;
+      for (const [a, b] of HAND_CONNECTIONS) {
+        ctx.beginPath();
+        ctx.moveTo(pontos[a].x, pontos[a].y);
+        ctx.lineTo(pontos[b].x, pontos[b].y);
+        ctx.stroke();
+      }
+    }
+
+    function desenharCursor() {
+      if (!cursor.visivel) return;
+      ctx.beginPath();
+      ctx.arc(cursor.x, cursor.y, cursor.pincando ? 12 : 18, 0, Math.PI * 2);
+      ctx.lineWidth = 4;
+      if (cursor.pincando) {
+        ctx.fillStyle = "rgba(255, 204, 0, 0.9)";
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.stroke();
+      }
+    }
+
     function desenhar() {
       // vídeo espelhado, como um espelho de verdade
       ctx.save();
@@ -80,37 +141,17 @@
       ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
       ctx.restore();
 
-      // desenha a mão detectada (também espelhada, para alinhar com o vídeo)
       if (resultadoMaos && resultadoMaos.multiHandLandmarks.length > 0) {
-        status.textContent = "Mão detectada";
-        for (const marcos of resultadoMaos.multiHandLandmarks) {
-          const pontos = marcos.map(p => ({
-            x: (1 - p.x) * canvas.width,
-            y: p.y * canvas.height
-          }));
-
-          // conexões entre os pontos
-          ctx.strokeStyle = "#00ff88";
-          ctx.lineWidth = 2;
-          for (const [a, b] of HAND_CONNECTIONS) {
-            ctx.beginPath();
-            ctx.moveTo(pontos[a].x, pontos[a].y);
-            ctx.lineTo(pontos[b].x, pontos[b].y);
-            ctx.stroke();
-          }
-
-          // pontos
-          ctx.fillStyle = "#ffcc00";
-          for (const p of pontos) {
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
+        const marcos = resultadoMaos.multiHandLandmarks[0];
+        atualizarCursor(marcos);
+        desenharMao(marcos);
+        status.textContent = cursor.pincando ? "Pinça fechada" : "Mão detectada";
       } else {
+        cursor.visivel = false;
         status.textContent = "Mostre a mão para a câmera";
       }
 
+      desenharCursor();
       requestAnimationFrame(desenhar);
     }
   </script>
