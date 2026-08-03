@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Puzzle Cam</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #eee;
+      font-family: monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 20px;
+    }
+    h1 { letter-spacing: 4px; font-size: 20px; margin: 0; }
+    #status { color: #999; font-size: 14px; }
+    canvas {
+      border: 2px solid #444;
+      border-radius: 8px;
+      max-width: 100%;
+    }
+    video { display: none; }
+  </style>
+</head>
+<body>
+  <h1>PUZZLE CAM</h1>
+  <div id="status">Carregando modelo de mãos...</div>
+  <video id="webcam" autoplay playsinline></video>
+  <canvas id="tela" width="960" height="540"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+
+  <script>
+    const video = document.getElementById("webcam");
+    const canvas = document.getElementById("tela");
+    const ctx = canvas.getContext("2d");
+    const status = document.getElementById("status");
+
+    let resultadoMaos = null;
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    hands.onResults((resultados) => {
+      resultadoMaos = resultados;
+    });
+
+    const camera = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 1280,
+      height: 720
+    });
+
+    camera.start().then(() => {
+      status.textContent = "Mostre a mão para a câmera";
+      desenhar();
+    }).catch((erro) => {
+      status.textContent = "Erro ao acessar a webcam: " + erro.message;
+    });
+
+    function desenhar() {
+      // vídeo espelhado, como um espelho de verdade
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      // desenha a mão detectada (também espelhada, para alinhar com o vídeo)
+      if (resultadoMaos && resultadoMaos.multiHandLandmarks.length > 0) {
+        status.textContent = "Mão detectada";
+        for (const marcos of resultadoMaos.multiHandLandmarks) {
+          const pontos = marcos.map(p => ({
+            x: (1 - p.x) * canvas.width,
+            y: p.y * canvas.height
+          }));
+
+          // conexões entre os pontos
+          ctx.strokeStyle = "#00ff88";
+          ctx.lineWidth = 2;
+          for (const [a, b] of HAND_CONNECTIONS) {
+            ctx.beginPath();
+            ctx.moveTo(pontos[a].x, pontos[a].y);
+            ctx.lineTo(pontos[b].x, pontos[b].y);
+            ctx.stroke();
+          }
+
+          // pontos
+          ctx.fillStyle = "#ffcc00";
+          for (const p of pontos) {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      } else {
+        status.textContent = "Mostre a mão para a câmera";
+      }
+
+      requestAnimationFrame(desenhar);
+    }
+  </script>
+</body>
+</html>
