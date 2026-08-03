@@ -44,6 +44,20 @@
     // limiar da pinça: distância polegar-indicador dividida pelo tamanho da mão
     const LIMIAR_PINCA = 0.35;
 
+    const DURACAO_CONTAGEM = 3; // segundos
+
+    const LINHAS = 3;
+    const COLUNAS = 4;
+
+    // regiao centrak da tela onde o quebra-cabecas será montado
+    const tabuleiro = { x: 0, y: 0, largura: 0, altura: 0, celula: 0};
+    let pecas = [];
+
+    // estados possiveis: "rastreando" -> "contagem" -> "capturado"
+    let estado = "rastreando";
+    let fimContagem = 0; 
+    let foto = null; // canvas offscreen com a foto congelada
+
     let resultadoMaos = null;
 
     // estado do cursor controlado pela mão
@@ -104,6 +118,26 @@
       cursor.visivel = true;
     }
 
+    function iniciarContagem() {
+      estado = "contagem";
+      fimContagem = performance.now() + DURACAO_CONTAGEM * 1000;
+    }
+
+    function capturarFoto() {
+      foto = document.createElement("canvas");
+      foto.width = canvas.width;
+      foto.height = canvas.height;
+      const fctx = foto.getContext("2d");
+
+      // captura já espelhada, para a foto ficar igual ao que o usuário vê na tela
+      fctx.translate(foto.width, 0);
+      fctx.scale(-1, 1);
+      fctx.drawImage(video, 0, 0, foto.width, foto.height);
+
+      criarPecas();
+      estado = "montando";
+    }
+      
     function desenharMao(marcos) {
       const pontos = marcos.map(p => ({
         x: (1 - p.x) * canvas.width,
@@ -134,26 +168,107 @@
       }
     }
 
-    function desenhar() {
-      // vídeo espelhado, como um espelho de verdade
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-      ctx.restore();
+    function criarPecas() {
+      //tabuleiro ocupa 60% da largura, centralizado
+      tabuleiro.largura = canvas.width * 0.6;
+      tabuleiro.celula = tabuleiro.largura / COLUNAS;
+      tabuleiro.altura = tabuleiro.celula * LINHAS;
+      tabuleiro.x = (canvas.width - tabuleiro.largura) / 2;
+      tabuleiro.y = (canvas.height - tabuleiro.altura) / 2;
 
+      pecas = [];
+      for (let l = 0; l < LINHAS; l++) {
+        for (let c = 0; c < COLUNAS; c++) {
+          const destinoX = tabuleiro.x + c * tabuleiro.celula;
+          const destinoY = tabuleiro.y + l * tabuleiro.celula;
+          pecas.push({
+            sx: destinoX, //recorte na foto
+            sy: destinoY,
+            destinoX,     //lucar certo no tabuleiro
+            destinoY,
+            x: Math.random() * (canvas.width - tabuleiro.celula), //posicao atual
+            y: Math.random() * (canvas.height - tabuleiro.celula), //embaralha
+            colocada: false
+          });
+        }
+      }
+    }
+
+    function desenhar() {
+      // fundo: video ao vivo, ou a foto congelada se ja capturou
+      if (estado === "capturado" && foto) {
+        ctx.drawImage(foto, 0, 0);
+      } else {
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+
+      // mao e cursor
       if (resultadoMaos && resultadoMaos.multiHandLandmarks.length > 0) {
         const marcos = resultadoMaos.multiHandLandmarks[0];
         atualizarCursor(marcos);
         desenharMao(marcos);
-        status.textContent = cursor.pincando ? "Pinça fechada" : "Mão detectada";
       } else {
         cursor.visivel = false;
-        status.textContent = "Mostre a mão para a câmera";
+      }
+
+      // logica de estados
+      if (estado === "rastreando") {
+        status.textContent = "Feche a pinça para iniciar a captura";
+        if (cursor.visivel && cursor.pincando) iniciarContagem();
+
+      } else if (estado === "contagem") {
+        const restante = Math.ceil((fimContagem - performance.now()) / 1000);
+        if (restante <= 0) {
+          capturarFoto();
+        } else {
+          status.textContent = "Preparar a pose!";
+          ctx.fillStyle = "rgba(255, 204, 0, 0.95)";
+          ctx.font = "bold 160px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(restante, canvas.width / 2, canvas.height / 2);
+        }
+     
+      } else if (estado === "montando") {
+        status.textContent = "Monte o quebra-cabeça!";
+        desenharTabuleiro();
+        desenharPecas();
       }
 
       desenharCursor();
       requestAnimationFrame(desenhar);
     }
+
+    function desenharTabuleiro() {
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.lineWidth = 2;
+      for (let l = 0; l < LINHAS; l++) {
+        for (let c = 0; c < COLUNAS; c++) {
+          ctx.strokeRect(
+            tabuleiro.x + c * tabuleiro.celula,
+            tabuleiro.y + l * tabuleiro.celula,
+            tabuleiro.celula,
+            tabuleiro.celula
+          );
+        }
+      }
+    }
+
+    function desenharPecas() {
+      for (const p of pecas) {
+        ctx.drawImage(
+          foto,
+          p.sx, p.sy, tabuleiro.celula, tabuleiro.celula,  // origem: recorte na foto
+          p.x, p.y, tabuleiro.celula, tabuleiro.celula      // destino: posição atual
+        );
+        ctx.strokeStyle = p.colocada ? "rgba(0, 255, 136, 0.9)" : "rgba(255, 204, 0, 0.9)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(p.x, p.y, tabuleiro.celula, tabuleiro.celula);
+      }
+    }
+
   </script>
 </body>
 </html>
