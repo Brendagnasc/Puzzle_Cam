@@ -21,9 +21,26 @@
       border: 2px solid #444;
       border-radius: 8px;
       max-width: 100%;
+      display: block;
     }
     video { display: none; }
-    #acoes button {
+
+    #palco { position: relative; }
+    #menu {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      background: rgba(0, 0, 0, 0.6);
+      border-radius: 8px;
+    }
+    #tituloMenu { font-size: 22px; letter-spacing: 2px; }
+    #opcoesMenu { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+
+    #menu button, #acoes button {
       font-family: monospace;
       font-size: 16px;
       padding: 10px 24px;
@@ -33,17 +50,23 @@
       border-radius: 8px;
       cursor: pointer;
     }
-    #acoes button:hover { border-color: #ffcc00; }
+    #menu button:hover, #acoes button:hover { border-color: #ffcc00; }
   </style>
 </head>
 <body>
   <h1>PUZZLE CAM</h1>
   <div id="status">Carregando modelo de mãos...</div>
   <video id="webcam" autoplay playsinline></video>
-  <canvas id="tela" width="960" height="540"></canvas>
-  <div id="acoes">
-    <button onclick="iniciarContagem()">Iniciar Contagem</button>
+
+  <div id="palco">
+    <canvas id="tela" width="960" height="540"></canvas>
+    <div id="menu">
+      <div id="tituloMenu">Escolha o jogo</div>
+      <div id="opcoesMenu"></div>
+      <button id="btnVoltar" style="display: none;">Voltar</button>
+    </div>
   </div>
+
   <div id="acoes" style="display: none; gap: 12px;">
     <button id="btnSalvar">Salvar foto</button>
     <button id="btnReiniciar">Jogar de novo</button>
@@ -59,20 +82,38 @@
     const ctx = canvas.getContext("2d");
     const status = document.getElementById("status");
 
+    const menu = document.getElementById("menu");
+    const tituloMenu = document.getElementById("tituloMenu");
+    const opcoesMenu = document.getElementById("opcoesMenu");
+    const btnVoltar = document.getElementById("btnVoltar");
+
     // limiar da pinça: distância polegar-indicador dividida pelo tamanho da mão
     const LIMIAR_PINCA = 0.35;
 
     const DURACAO_CONTAGEM = 3; // segundos
 
-    const LINHAS = 3;
-    const COLUNAS = 4;
+    // configuração do menu: adicionar um jogo ou nível é só acrescentar uma entrada
+    const JOGOS = {
+      puzzle: { nome: "Puzzle Cam" }
+    };
+
+    const NIVEIS = {
+      facil:   { nome: "Fácil",   linhas: 2, colunas: 3 },
+      medio:   { nome: "Médio",   linhas: 3, colunas: 4 },
+      dificil: { nome: "Difícil", linhas: 4, colunas: 6 }
+    };
+
+    // definidos pelo nível escolhido no menu
+    let LINHAS = 3;
+    let COLUNAS = 4;
 
     // região central da tela onde o quebra-cabeça será montado
     const tabuleiro = { x: 0, y: 0, largura: 0, altura: 0, celula: 0 };
     let pecas = [];
 
-    // estados possíveis: "rastreando" -> "contagem" -> "montando"
-    let estado = "rastreando";
+    // estados: "menuJogo" -> "menuNivel" -> "rastreando" -> "contagem" -> "montando" -> "completo"
+    let estado = "menuJogo";
+    let jogoSelecionado = null;
     let fimContagem = 0;
     let foto = null; // canvas offscreen com a foto congelada
 
@@ -114,11 +155,55 @@
     });
 
     camera.start().then(() => {
-      status.textContent = "Mostre a mão para a câmera";
+      status.textContent = "Escolha o jogo para começar";
       desenhar();
     }).catch((erro) => {
       status.textContent = "Erro ao acessar a webcam: " + erro.message;
     });
+
+    // ---------- menu ----------
+
+    // gera um botão para cada item do objeto de configuração
+    function criarBotoesMenu(itens, aoClicar) {
+      opcoesMenu.innerHTML = "";
+      for (const chave of Object.keys(itens)) {
+        const botao = document.createElement("button");
+        botao.textContent = itens[chave].nome;
+        botao.addEventListener("click", () => aoClicar(chave));
+        opcoesMenu.appendChild(botao);
+      }
+    }
+
+    function mostrarMenuJogo() {
+      estado = "menuJogo";
+      status.textContent = "Escolha o jogo para começar";
+      tituloMenu.textContent = "Escolha o jogo";
+      btnVoltar.style.display = "none";
+      criarBotoesMenu(JOGOS, (chave) => {
+        jogoSelecionado = chave;
+        mostrarMenuNivel();
+      });
+      menu.style.display = "flex";
+    }
+
+    function mostrarMenuNivel() {
+      estado = "menuNivel";
+      status.textContent = "Escolha o nível";
+      tituloMenu.textContent = "Escolha o nível";
+      btnVoltar.style.display = "block";
+      criarBotoesMenu(NIVEIS, (chave) => {
+        LINHAS = NIVEIS[chave].linhas;
+        COLUNAS = NIVEIS[chave].colunas;
+        iniciarJogo();
+      });
+    }
+
+    function iniciarJogo() {
+      menu.style.display = "none";
+      estado = "rastreando";
+    }
+
+    // ---------- visão computacional ----------
 
     function distancia(a, b) {
       return Math.hypot(a.x - b.x, a.y - b.y);
@@ -138,26 +223,6 @@
       cursor.y = ((polegar.y + indicador.y) / 2) * canvas.height;
       cursor.pincando = aberturaPinca < LIMIAR_PINCA;
       cursor.visivel = true;
-    }
-
-    function iniciarContagem() {
-      estado = "contagem";
-      fimContagem = performance.now() + DURACAO_CONTAGEM * 1000;
-    }
-
-    function capturarFoto() {
-      foto = document.createElement("canvas");
-      foto.width = canvas.width;
-      foto.height = canvas.height;
-      const fctx = foto.getContext("2d");
-
-      // captura já espelhada, para a foto ficar igual ao que o usuário vê na tela
-      fctx.translate(foto.width, 0);
-      fctx.scale(-1, 1);
-      fctx.drawImage(video, 0, 0, foto.width, foto.height);
-
-      criarPecas();
-      estado = "montando";
     }
 
     function desenharMao(marcos) {
@@ -188,6 +253,28 @@
         ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
         ctx.stroke();
       }
+    }
+
+    // ---------- captura e quebra-cabeça ----------
+
+    function iniciarContagem() {
+      estado = "contagem";
+      fimContagem = performance.now() + DURACAO_CONTAGEM * 1000;
+    }
+
+    function capturarFoto() {
+      foto = document.createElement("canvas");
+      foto.width = canvas.width;
+      foto.height = canvas.height;
+      const fctx = foto.getContext("2d");
+
+      // captura já espelhada, para a foto ficar igual ao que o usuário vê na tela
+      fctx.translate(foto.width, 0);
+      fctx.scale(-1, 1);
+      fctx.drawImage(video, 0, 0, foto.width, foto.height);
+
+      criarPecas();
+      estado = "montando";
     }
 
     function criarPecas() {
@@ -275,13 +362,15 @@
         p.x = p.destinoX;
         p.y = p.destinoY;
         p.colocada = true;
-        
+
         if (pecas.every(pc => pc.colocada)) {
           estado = "completo";
           document.getElementById("acoes").style.display = "flex";
-        } 
+        }
       }
     }
+
+    // ---------- loop principal ----------
 
     function desenhar() {
       // fundo: vídeo ao vivo
@@ -339,12 +428,13 @@
 
         desenharTabuleiro();
         desenharPecas();
+
       } else if (estado === "completo") {
-        status.textContent = "Parabéns! Quebra-cabeça completo!";
+        status.textContent = "Quebra-cabeça completo!";
 
         // a foto inteira no lugar do tabuleiro: peças viram uma imagem só
         ctx.drawImage(
-          foto, 
+          foto,
           tabuleiro.x, tabuleiro.y, tabuleiro.largura, tabuleiro.altura,
           tabuleiro.x, tabuleiro.y, tabuleiro.largura, tabuleiro.altura
         );
@@ -356,7 +446,7 @@
         ctx.font = "bold 64px monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("Parabéns!", canvas.width / 2, tabuleiro.y -40);
+        ctx.fillText("COMPLETO!", canvas.width / 2, tabuleiro.y - 40);
       }
 
       // rodam em todo frame, independente do estado
@@ -364,6 +454,10 @@
       pincavaAntes = cursor.visivel && cursor.pincando;
       requestAnimationFrame(desenhar);
     }
+
+    // ---------- botões ----------
+
+    btnVoltar.addEventListener("click", mostrarMenuJogo);
 
     document.getElementById("btnSalvar").addEventListener("click", () => {
       const link = document.createElement("a");
@@ -377,9 +471,10 @@
       pecas = [];
       pecaSegura = null;
       document.getElementById("acoes").style.display = "none";
-      estado = "rastreando";
+      mostrarMenuJogo();
     });
-    
+
+    mostrarMenuJogo();
   </script>
 </body>
 </html>
