@@ -2,7 +2,7 @@
 
 Jogo interativo de quebra-cabeça controlado por gestos das mãos, usando visão computacional em tempo real no navegador.
 
-Demo: https://brendagnasc.github.io/puzzle-cam/
+Demo: https://brendagnasc.github.io/Puzzle_Cam/
 
 ## Como funciona
 
