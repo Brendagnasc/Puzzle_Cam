@@ -70,6 +70,7 @@
   <div id="acoes" style="display: none; gap: 12px;">
     <button id="btnSalvar">Salvar foto</button>
     <button id="btnReiniciar">Jogar de novo</button>
+    <button id="btnMenu">Trocar nível</button>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
@@ -552,12 +553,24 @@
       link.click();
     });
 
-    document.getElementById("btnReiniciar").addEventListener("click", () => {
+    function limparPartida() {
       foto = null;
       pecas = [];
       pecaSegura = null;
       document.getElementById("acoes").style.display = "none";
-      mostrarMenuJogo();
+    }
+
+    // mesmo nível, nova foto
+    document.getElementById("btnReiniciar").addEventListener("click", () => {
+      limparPartida();
+      iniciarJogo();
+    });
+
+    // volta para a escolha de nível
+    document.getElementById("btnMenu").addEventListener("click", () => {
+      limparPartida();
+      menu.style.display = "flex";
+      mostrarMenuNivel();
     });
 
     mostrarMenuJogo();
