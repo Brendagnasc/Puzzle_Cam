@@ -249,6 +249,19 @@
       cursor.ultimaDeteccao = performance.now();
     }
 
+    function limitar(valor, minimo, maximo) {
+      return Math.min(Math.max(valor, minimo), maximo);
+    }
+
+    function embaralhar(lista) {
+      // Fisher-Yates
+      for (let i = lista.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [lista[i], lista[j]] = [lista[j], lista[i]];
+      }
+      return lista;
+    }
+
     function desenharMao(marcos) {
       const pontos = marcos.map(p => ({
         x: (1 - p.x) * canvas.width,
@@ -309,22 +322,68 @@
       tabuleiro.x = (canvas.width - tabuleiro.largura) / 2;
       tabuleiro.y = (canvas.height - tabuleiro.altura) / 2;
 
+      const posicoes = gerarPosicoesLaterais(LINHAS * COLUNAS);
+
       pecas = [];
       for (let l = 0; l < LINHAS; l++) {
         for (let c = 0; c < COLUNAS; c++) {
           const destinoX = tabuleiro.x + c * tabuleiro.celula;
           const destinoY = tabuleiro.y + l * tabuleiro.celula;
+          const inicial = posicoes.pop(); // posição embaralhada, fora do tabuleiro
           pecas.push({
             sx: destinoX,  // recorte na foto
             sy: destinoY,
             destinoX,      // lugar certo no tabuleiro
             destinoY,
-            x: Math.random() * (canvas.width - tabuleiro.celula),  // posição atual
-            y: Math.random() * (canvas.height - tabuleiro.celula), // (embaralhada)
+            x: inicial.x,  // posição atual
+            y: inicial.y,
             colocada: false
           });
         }
       }
+    }
+
+    // distribui n posições nas duas faixas laterais (fora do tabuleiro),
+    // em uma grade com um pouco de variação, e embaralha a ordem
+    function gerarPosicoesLaterais(n) {
+      const c = tabuleiro.celula;
+      const larguraFaixa = tabuleiro.x; // as duas faixas têm a mesma largura
+      const alturaUtil = canvas.height - c;
+      const posicoes = [];
+
+      const faixas = [
+        { inicio: 0, quantidade: Math.ceil(n / 2) },                                  // esquerda
+        { inicio: tabuleiro.x + tabuleiro.largura, quantidade: Math.floor(n / 2) }    // direita
+      ];
+
+      for (const faixa of faixas) {
+        const k = faixa.quantidade;
+        if (k === 0) continue;
+
+        // quantas colunas de peças cabem lado a lado na faixa
+        const colunas = limitar(Math.floor(larguraFaixa / c), 1, k);
+        const linhas = Math.ceil(k / colunas);
+        const folgaX = Math.max(0, larguraFaixa - c);
+        const passoX = colunas > 1 ? folgaX / (colunas - 1) : 0;
+        const passoY = linhas > 1 ? alturaUtil / (linhas - 1) : 0;
+
+        const minX = faixa.inicio;
+        const maxX = faixa.inicio + folgaX;
+
+        for (let i = 0; i < k; i++) {
+          const col = i % colunas;
+          const lin = Math.floor(i / colunas);
+          const baseX = colunas > 1 ? minX + col * passoX : minX + folgaX / 2;
+          const baseY = linhas > 1 ? lin * passoY : alturaUtil / 2;
+          const variacao = c * 0.1;
+          posicoes.push({
+            x: limitar(baseX + (Math.random() - 0.5) * variacao, minX, maxX),
+            y: limitar(baseY + (Math.random() - 0.5) * variacao, 0, alturaUtil)
+          });
+        }
+      }
+
+      return embaralhar(posicoes);
     }
 
     function desenharTabuleiro() {
