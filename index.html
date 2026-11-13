@@ -96,6 +96,9 @@
     // suavização do cursor (0 a 1): quanto menor, mais suave e mais "atrasado"
     const SUAVIZACAO = 0.4;
 
+    // por quanto tempo a mão pode sumir da detecção sem soltar a peça
+    const TOLERANCIA_PERDA_MS = 250;
+
     const DURACAO_CONTAGEM = 3; // segundos
 
     // configuração do menu: adicionar um jogo ou nível é só acrescentar uma entrada
@@ -134,7 +137,8 @@
       x: 0,
       y: 0,
       pincando: false,
-      visivel: false
+      visivel: false,
+      ultimaDeteccao: 0 // performance.now() da última vez que a mão foi vista
     };
 
     const hands = new Hands({
@@ -242,6 +246,7 @@
         ? aberturaPinca < LIMIAR_ABRIR
         : aberturaPinca < LIMIAR_FECHAR;
       cursor.visivel = true;
+      cursor.ultimaDeteccao = performance.now();
     }
 
     function desenharMao(marcos) {
@@ -403,8 +408,11 @@
         const marcos = resultadoMaos.multiHandLandmarks[0];
         atualizarCursor(marcos);
         desenharMao(marcos);
-      } else {
+      } else if (performance.now() - cursor.ultimaDeteccao > TOLERANCIA_PERDA_MS) {
+        // só considera a mão perdida depois da tolerância; antes disso o cursor
+        // fica parado na última posição, mantendo a pinça (e a peça segura)
         cursor.visivel = false;
+        cursor.pincando = false;
       }
 
       // lógica de cada estado
