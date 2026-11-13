@@ -506,10 +506,10 @@
           soltarPeca(); // mão saiu da câmera segurando peça
         }
 
-        // peça segura acompanha o cursor
+        // peça segura acompanha o cursor, sem sair da tela
         if (pecaSegura) {
-          pecaSegura.x = cursor.x - deslocamento.x;
-          pecaSegura.y = cursor.y - deslocamento.y;
+          pecaSegura.x = limitar(cursor.x - deslocamento.x, 0, canvas.width - tabuleiro.celula);
+          pecaSegura.y = limitar(cursor.y - deslocamento.y, 0, canvas.height - tabuleiro.celula);
         }
 
         desenharTabuleiro();
