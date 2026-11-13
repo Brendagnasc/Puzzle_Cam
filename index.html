@@ -87,8 +87,14 @@
     const opcoesMenu = document.getElementById("opcoesMenu");
     const btnVoltar = document.getElementById("btnVoltar");
 
-    // limiar da pinça: distância polegar-indicador dividida pelo tamanho da mão
-    const LIMIAR_PINCA = 0.35;
+    // limiares da pinça: distância polegar-indicador dividida pelo tamanho da mão.
+    // dois limiares (histerese): fecha abaixo de um, só abre acima do outro.
+    // assim a pinça não fica oscilando quando a distância está perto do limite
+    const LIMIAR_FECHAR = 0.30;
+    const LIMIAR_ABRIR = 0.45;
+
+    // suavização do cursor (0 a 1): quanto menor, mais suave e mais "atrasado"
+    const SUAVIZACAO = 0.4;
 
     const DURACAO_CONTAGEM = 3; // segundos
 
@@ -219,9 +225,22 @@
       const aberturaPinca = distancia(polegar, indicador) / tamanhoMao;
 
       // cursor fica no ponto médio entre os dois dedos, já espelhado
-      cursor.x = (1 - (polegar.x + indicador.x) / 2) * canvas.width;
-      cursor.y = ((polegar.y + indicador.y) / 2) * canvas.height;
-      cursor.pincando = aberturaPinca < LIMIAR_PINCA;
+      const alvoX = (1 - (polegar.x + indicador.x) / 2) * canvas.width;
+      const alvoY = ((polegar.y + indicador.y) / 2) * canvas.height;
+
+      if (cursor.visivel) {
+        // média móvel exponencial: tira a tremedeira dos landmarks
+        cursor.x += (alvoX - cursor.x) * SUAVIZACAO;
+        cursor.y += (alvoY - cursor.y) * SUAVIZACAO;
+      } else {
+        // mão acabou de aparecer: vai direto para a posição, sem "deslizar"
+        cursor.x = alvoX;
+        cursor.y = alvoY;
+      }
+
+      cursor.pincando = cursor.pincando
+        ? aberturaPinca < LIMIAR_ABRIR
+        : aberturaPinca < LIMIAR_FECHAR;
       cursor.visivel = true;
     }
 
